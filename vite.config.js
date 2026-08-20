@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-
 export default defineConfig({
+  base: "/self-trainer/", // ✅新增这一行，前后斜杠不能丢
   plugins: [
     react(),
     VitePWA({

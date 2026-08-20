@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
-  base: "/self-trainer/", // ✅新增这一行，前后斜杠不能丢
+  base: "/", // 修改为根路径部署，满足微信根目录校验txt文件
   plugins: [
     react(),
     VitePWA({

@@ -46,12 +46,15 @@ export const REVIEW_SYSTEM_PROMPT = `你是 SelfTrainer 的行为优化复盘助
  * @param {Array} messages - 用户消息数组，不含 system
  * @param {string} systemPrompt - 可选 system prompt，默认使用 SYSTEM_PROMPT
  * @param {string} apiKeyOverride - 可选，覆盖 localStorage 中的 apiKey
+ * @param {object} options - 可选：timeoutMs 超时毫秒数、retries 重试次数、signal 外部取消信号
  */
 export async function chatCompletion(
   messages,
   systemPrompt = SYSTEM_PROMPT,
-  apiKeyOverride
+  apiKeyOverride,
+  options = {}
 ) {
+  const { timeoutMs = 12000, retries = 1, signal } = options;
   const config = loadApiConfig();
   const apiKey = apiKeyOverride || config.apiKey;
 
@@ -77,9 +80,19 @@ export async function chatCompletion(
 
   let lastError = null;
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      // 简单退避后再重试
+      await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
+    }
+
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const forwardAbort = () => controller.abort();
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', forwardAbort, { once: true });
+    }
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(DEEPSEEK_API_URL, {
@@ -91,8 +104,6 @@ export async function chatCompletion(
         body: JSON.stringify(body),
         signal: controller.signal
       });
-
-      clearTimeout(timer);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -107,11 +118,17 @@ export async function chatCompletion(
 
       return content;
     } catch (error) {
-      clearTimeout(timer);
       lastError = error;
+      if (signal?.aborted) break;
+    } finally {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', forwardAbort);
     }
   }
 
+  if (signal?.aborted) {
+    throw new Error('请求已取消');
+  }
   throw lastError || new Error('AI 请求失败');
 }
 
@@ -128,6 +145,7 @@ export async function testApiConnection(apiKey) {
       }
     ],
     SYSTEM_PROMPT,
-    apiKey
+    apiKey,
+    { timeoutMs: 10000, retries: 0 }
   );
 }

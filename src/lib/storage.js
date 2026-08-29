@@ -1,9 +1,6 @@
-const CONFIG_KEY = 'selftrainer_config_v1';
+export const CONFIG_KEY = 'selftrainer_config_v1';
 const API_CONFIG_KEY = 'selftrainer_api_config_v1';
 const DRAFT_KEY = 'selftrainer_draft_v1';
-
-const FIXED_BASE_URL = 'https://api.deepseek.com/v1';
-const FIXED_MODEL = 'deepseek-v4-flash';
 
 export function createDefaultConfig() {
   return {
@@ -57,11 +54,8 @@ export function loadApiConfig() {
     needsRewrite = true;
   }
 
-  const result = {
-    apiKey,
-    baseUrl: FIXED_BASE_URL,
-    model: FIXED_MODEL
-  };
+  // baseUrl 与 model 在 api.js 中固定，不在配置里流转
+  const result = { apiKey };
 
   if (needsRewrite) {
     saveApiConfig(result);
@@ -104,6 +98,15 @@ export function clearDraft(date) {
     const all = JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}');
     delete all[date];
     localStorage.setItem(DRAFT_KEY, JSON.stringify(all));
+  } catch (e) {
+    // ignore
+  }
+}
+
+// 一键重置时清空全部草稿
+export function clearAllDrafts() {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
   } catch (e) {
     // ignore
   }

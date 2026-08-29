@@ -4,9 +4,11 @@ import {
   saveConfig,
   loadApiConfig,
   saveApiConfig,
-  createDefaultConfig
+  createDefaultConfig,
+  clearAllDrafts
 } from '../lib/storage';
 import { getAllRecords, putRecord, replaceAllRecords } from '../lib/db';
+import { syncRegistryFromConfig } from '../lib/indicators';
 
 export const useStore = create((set, get) => ({
   config: loadConfig(),
@@ -15,6 +17,7 @@ export const useStore = create((set, get) => ({
 
   setConfig: (config) => {
     saveConfig(config);
+    syncRegistryFromConfig(config);
     set({ config });
   },
 
@@ -38,6 +41,7 @@ export const useStore = create((set, get) => ({
   importData: async ({ config, records }) => {
     await replaceAllRecords(records);
     saveConfig(config);
+    syncRegistryFromConfig(config);
     set({ config, records });
   },
 
@@ -45,22 +49,7 @@ export const useStore = create((set, get) => ({
     await replaceAllRecords([]);
     const defaultConfig = createDefaultConfig();
     saveConfig(defaultConfig);
-    localStorage.removeItem('selftrainer_draft_v1');
+    clearAllDrafts();
     set({ config: defaultConfig, records: [] });
-  },
-
-  updateIndicatorName: async (oldName, newName) => {
-    const records = await getAllRecords();
-    const updated = records.map((record) => {
-      if (record.values && oldName in record.values) {
-        const values = { ...record.values };
-        values[newName] = values[oldName];
-        delete values[oldName];
-        return { ...record, values };
-      }
-      return record;
-    });
-    await replaceAllRecords(updated);
-    set({ records: updated });
   }
 }));

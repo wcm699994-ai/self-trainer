@@ -1,11 +1,15 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
 import {
   computeDailyScores,
   movingAverage,
-  generateReviewConclusion
+  generateReviewConclusion,
+  hasInterferenceTag
 } from '../lib/rulesEngine';
 import { chatCompletion, REVIEW_SYSTEM_PROMPT } from '../lib/api';
+import { useTodayStr } from '../hooks/useTodayStr';
+import { addDays } from '../lib/date';
+import { allIndicatorsOf } from '../lib/indicators';
 import {
   LineChart,
   Line,
@@ -14,19 +18,9 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  ReferenceLine,
   ResponsiveContainer
 } from 'recharts';
-
-function toDateStr(date) {
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
-}
-
-function addDays(dateStr, days) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  d.setDate(d.getDate() + days);
-  return toDateStr(d);
-}
 
 function getTrendColor(scores, key, betterWhenLower) {
   if (scores.length < 3) return '#6b7280';
@@ -61,56 +55,59 @@ export default function ReviewPage() {
   const records = useStore((s) => s.records);
   const apiConfig = useStore((s) => s.apiConfig);
 
+  const today = useTodayStr();
   const [range, setRange] = useState(7);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiReview, setAiReview] = useState('');
   const [aiError, setAiError] = useState(false);
 
-  const [todayStr, setTodayStr] = useState(() => toDateStr(new Date()));
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const newToday = toDateStr(new Date());
-      setTodayStr((prevToday) => {
-        if (prevToday !== newToday) {
-          return newToday;
-        }
-        return prevToday;
-      });
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
+  const aiAbortRef = useRef(null);
+  useEffect(() => () => aiAbortRef.current?.abort(), []);
 
   const hasApiKey = apiConfig.apiKey && apiConfig.apiKey.trim();
 
   const filtered = useMemo(() => {
-    const cutoff = addDays(todayStr, -range);
+    const cutoff = addDays(today, -range);
     return records
-      .filter((record) => record.date >= cutoff && record.date <= todayStr)
+      .filter((record) => record.date >= cutoff && record.date <= today)
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [records, range, todayStr]);
+  }, [records, range, today]);
 
   const cleanedFiltered = useMemo(
-    () =>
-      filtered.filter(
-        (r) => !((r.tags || []).includes('生病') || (r.tags || []).includes('突发事件'))
-      ),
+    () => filtered.filter((r) => !hasInterferenceTag(r)),
     [filtered]
   );
 
   const scores = useMemo(() => computeDailyScores(config, cleanedFiltered), [config, cleanedFiltered]);
   const ma = useMemo(() => movingAverage(scores, 7), [scores]);
   const conclusion = useMemo(
-    () => generateReviewConclusion(config, cleanedFiltered, range),
-    [config, cleanedFiltered, range]
+    () => generateReviewConclusion(config, cleanedFiltered),
+    [config, cleanedFiltered]
   );
 
   const lossColor = getTrendColor(scores, 'lossScore', true);
   const gainColor = getTrendColor(scores, 'gainScore', false);
 
+  // 单指标走势
+  const indOptions = useMemo(() => allIndicatorsOf(config), [config]);
+  const [selectedIndId, setSelectedIndId] = useState('');
+  const selectedInd = indOptions.find((ind) => ind.id === selectedIndId) || indOptions[0];
+
+  const indData = useMemo(() => {
+    if (!selectedInd) return [];
+    return cleanedFiltered
+      .filter((r) => r.values?.[selectedInd.id] !== undefined)
+      .map((r) => ({ date: r.date, value: Number(r.values[selectedInd.id]) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [cleanedFiltered, selectedInd]);
+
   const runAIReview = async () => {
     if (!hasApiKey || aiLoading) return;
+
+    aiAbortRef.current?.abort();
+    const controller = new AbortController();
+    aiAbortRef.current = controller;
 
     setAiLoading(true);
     setAiError(false);
@@ -139,36 +136,37 @@ export default function ReviewPage() {
             content: JSON.stringify(summary)
           }
         ],
-        REVIEW_SYSTEM_PROMPT
+        REVIEW_SYSTEM_PROMPT,
+        undefined,
+        { timeoutMs: 30000, retries: 0, signal: controller.signal }
       );
 
+      if (controller.signal.aborted) return;
       setAiReview(content);
     } catch (e) {
-      setAiError(true);
+      if (!controller.signal.aborted) setAiError(true);
     } finally {
-      setAiLoading(false);
+      if (!controller.signal.aborted) setAiLoading(false);
     }
   };
 
   return (
-    <div className="space-y-4">
-      <section className="bg-white rounded-lg border border-gray-200 p-4">
+    <div className="space-y-4 page-fade">
+      <section className="card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-medium">周度趋势</h2>
-          <div className="flex gap-2 text-sm">
+          <h2 className="section-title">周度趋势</h2>
+          <div className="flex gap-1.5">
             <button
+              type="button"
               onClick={() => setRange(7)}
-              className={`px-3 py-1 rounded ${
-                range === 7 ? 'bg-gray-900 text-white' : 'border border-gray-200'
-              }`}
+              className={range === 7 ? 'btn-primary !px-3 !py-1.5' : 'btn-secondary'}
             >
               近 7 天
             </button>
             <button
+              type="button"
               onClick={() => setRange(30)}
-              className={`px-3 py-1 rounded ${
-                range === 30 ? 'bg-gray-900 text-white' : 'border border-gray-200'
-              }`}
+              className={range === 30 ? 'btn-primary !px-3 !py-1.5' : 'btn-secondary'}
             >
               近 30 天
             </button>
@@ -176,7 +174,7 @@ export default function ReviewPage() {
         </div>
 
         {ma.length === 0 ? (
-          <p className="mt-4 text-sm text-gray-500">
+          <p className="mt-4 muted">
             {cleanedFiltered.length === 0 && filtered.length > 0
               ? '当前时间范围内所有记录均带有生病/突发事件标签，已从趋势中过滤。'
               : '暂无数据，请先录入训练样本。'}
@@ -221,8 +219,67 @@ export default function ReviewPage() {
         </p>
       </section>
 
-      <section className="bg-white rounded-lg border border-gray-200 p-4">
-        <h3 className="font-medium">基础复盘结论</h3>
+      {indOptions.length > 0 && (
+        <section className="card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="section-title">单指标走势</h2>
+            <select
+              value={selectedInd?.id || ''}
+              onChange={(e) => setSelectedIndId(e.target.value)}
+              className="input"
+            >
+              {indOptions.map((ind) => (
+                <option key={ind.id} value={ind.id}>
+                  {ind.name}（{ind.type === 'loss' ? '损失' : '增益'}）
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {indData.length === 0 ? (
+            <p className="mt-4 muted">所选指标在当前范围内暂无数据。</p>
+          ) : (
+            <div className="mt-4 h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={indData} margin={{ top: 5, right: 30, bottom: 5, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={(value) => value.slice(5)}
+                    minTickGap={20}
+                  />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <ReferenceLine
+                    y={selectedInd.target}
+                    stroke="#9ca3af"
+                    strokeDasharray="4 4"
+                    label={{
+                      value: `目标 ${selectedInd.target}`,
+                      position: 'right',
+                      fontSize: 11,
+                      fill: '#6b7280'
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    name={selectedInd.name}
+                    stroke="#0891b2"
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
+      )}
+
+      <section className="card p-4">
+        <h3 className="section-title">基础复盘结论</h3>
         <div className="mt-2 space-y-1 text-sm leading-6">
           <p>{conclusion.trend}</p>
           {conclusion.issue && <p>{conclusion.issue}</p>}
@@ -241,29 +298,26 @@ export default function ReviewPage() {
             setAiOpen(open);
             if (open && !aiReview && !aiError) runAIReview();
           }}
-          className="bg-white rounded-lg border border-gray-200 p-4"
+          className="card p-4"
         >
           <summary className="cursor-pointer text-sm text-gray-500">
             AI 深度复盘（可选）
           </summary>
           <div className="mt-3">
             <p className="text-xs text-gray-400 mb-2">
-              将发送近 {range} 天清洗后的结构化数据（不含身份信息）用于分析。
+              将发送近 {range} 天清洗后的结构化数据（不含身份信息）用于分析，最长等待 30 秒。
             </p>
             {aiLoading ? (
               <p className="text-sm text-gray-500">AI 分析中...</p>
             ) : aiError ? (
               <div className="text-sm text-gray-500">
                 AI 分析失败，请检查网络或 API 配置。
-                <button
-                  onClick={runAIReview}
-                  className="ml-2 border border-gray-300 rounded px-2 py-1 text-gray-700 hover:bg-gray-50"
-                >
+                <button type="button" onClick={runAIReview} className="btn-secondary ml-2">
                   重试
                 </button>
               </div>
             ) : aiReview ? (
-              <p className="text-sm leading-6">{aiReview}</p>
+              <p className="text-sm leading-6 whitespace-pre-wrap">{aiReview}</p>
             ) : (
               <p className="text-sm text-gray-500">点击展开后生成深度分析。</p>
             )}

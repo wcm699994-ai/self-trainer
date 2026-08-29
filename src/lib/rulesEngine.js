@@ -3,16 +3,32 @@
  * 采用「目标偏差率 + 7日滑动中位数」方案
  */
 
+import { allIndicatorsOf } from './indicators';
+
+// ---- 调参算法参数（集中管理，便于调整） ----
+const DEVIATION_THRESHOLD = 0.15;   // 偏差率超过该值才生成建议
+const TREND_THRESHOLD = 0.05;       // 复盘前后半段均值差超过该值判定趋势
+const STEP_MEDIAN_RATIO = 0.3;      // 步长候选1：偏离 7 日中位数的比例
+const STEP_CURRENT_RATIO = 0.2;     // 步长候选2：当前值的比例
+const STEP_TARGET_RATIO = 0.5;      // 步长候选3：距目标差值的比例
+const STEP_MIN = 0.5;               // 单次最小步长
+const STEP_CAP_RATIO = 0.2;         // 步长上限：当前值的比例
+const TARGET_ZERO_DENOMINATOR = 3;  // 目标为 0 时偏差率分母
+const MIN_SERIES_FOR_MEDIAN = 3;    // 参与中位数计算的最少样本数
+const INTERFERENCE_TAGS = ['生病', '突发事件'];
+
+function hasInterferenceTag(record) {
+  return (record.tags || []).some((tag) => INTERFERENCE_TAGS.includes(tag));
+}
+
+export { hasInterferenceTag };
+
 function indicatorDeviationRate(indicator, value) {
   const target = Number(indicator.target) || 0;
   const numericValue = Number(value);
 
-  let denominator;
-  if (target === 0) {
-    denominator = 3;
-  } else {
-    denominator = Math.abs(target);
-  }
+  const denominator =
+    target === 0 ? TARGET_ZERO_DENOMINATOR : Math.abs(target);
 
   if (indicator.type === 'loss') {
     return (numericValue - target) / denominator;
@@ -21,45 +37,30 @@ function indicatorDeviationRate(indicator, value) {
   }
 }
 
+// 某类型指标列表的加权平均偏差率；无可用值时返回 null
+function weightedDeviationScore(indicators, values, type) {
+  if (!indicators || indicators.length === 0) return null;
+
+  let weightedSum = 0;
+  let weightSum = 0;
+  indicators.forEach((ind) => {
+    const raw = values?.[ind.id];
+    if (raw === undefined || raw === null || Number.isNaN(Number(raw))) return;
+    const rate = indicatorDeviationRate({ ...ind, type }, raw);
+    const weight = Number(ind.weight) || 1;
+    weightedSum += rate * weight;
+    weightSum += weight;
+  });
+  return weightSum > 0 ? weightedSum / weightSum : null;
+}
+
 export function computeDailyScores(config, records) {
-  const lossIndicators = config.lossIndicators || [];
-  const gainIndicators = config.gainIndicators || [];
-
   return records
-    .map((record) => {
-      let lossScore = null;
-      let gainScore = null;
-
-      if (lossIndicators.length > 0) {
-        let weightedSum = 0;
-        let weightSum = 0;
-        lossIndicators.forEach((ind) => {
-          const raw = record.values?.[ind.name];
-          if (raw === undefined || raw === null || Number.isNaN(Number(raw))) return;
-          const rate = indicatorDeviationRate({ ...ind, type: 'loss' }, raw);
-          const weight = Number(ind.weight) || 1;
-          weightedSum += rate * weight;
-          weightSum += weight;
-        });
-        if (weightSum > 0) lossScore = weightedSum / weightSum;
-      }
-
-      if (gainIndicators.length > 0) {
-        let weightedSum = 0;
-        let weightSum = 0;
-        gainIndicators.forEach((ind) => {
-          const raw = record.values?.[ind.name];
-          if (raw === undefined || raw === null || Number.isNaN(Number(raw))) return;
-          const rate = indicatorDeviationRate({ ...ind, type: 'gain' }, raw);
-          const weight = Number(ind.weight) || 1;
-          weightedSum += rate * weight;
-          weightSum += weight;
-        });
-        if (weightSum > 0) gainScore = weightedSum / weightSum;
-      }
-
-      return { date: record.date, lossScore, gainScore };
-    })
+    .map((record) => ({
+      date: record.date,
+      lossScore: weightedDeviationScore(config.lossIndicators, record.values, 'loss'),
+      gainScore: weightedDeviationScore(config.gainIndicators, record.values, 'gain')
+    }))
     .filter((item) => item.lossScore !== null || item.gainScore !== null)
     .sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -97,47 +98,43 @@ export function generateSuggestion(config, records) {
   const recent = sortedRecords.slice(-7);
   const latest = sortedRecords[sortedRecords.length - 1];
 
-  const recentTags = recent.flatMap((r) => r.tags || []);
-  const hasInterference = recentTags.includes('生病') || recentTags.includes('突发事件');
+  const hasInterference = recent.some(hasInterferenceTag);
 
-  const allIndicators = [
-    ...(config.lossIndicators || []).map((ind) => ({ ...ind, type: 'loss' })),
-    ...(config.gainIndicators || []).map((ind) => ({ ...ind, type: 'gain' }))
-  ];
+  const allIndicators = allIndicatorsOf(config);
 
   const candidates = allIndicators
     .map((ind) => {
-      const value = latest.values?.[ind.name];
+      const value = latest.values?.[ind.id];
       if (value === undefined || value === null || Number.isNaN(Number(value))) return null;
 
       const numericValue = Number(value);
       const deviationRate = indicatorDeviationRate(ind, numericValue);
 
-      if (deviationRate <= 0.15) return null;
+      if (deviationRate <= DEVIATION_THRESHOLD) return null;
 
       const cleanedSeries = recent
-        .filter((r) => !((r.tags || []).includes('生病') || (r.tags || []).includes('突发事件')))
-        .map((r) => r.values?.[ind.name])
+        .filter((r) => !hasInterferenceTag(r))
+        .map((r) => r.values?.[ind.id])
         .filter((v) => v !== undefined && v !== null && !Number.isNaN(Number(v)))
         .map(Number);
 
-      if (cleanedSeries.length < 3) return null;
+      if (cleanedSeries.length < MIN_SERIES_FOR_MEDIAN) return null;
 
       const median7 = median(cleanedSeries);
       if (median7 === null) return null;
 
       const target = Number(ind.target) || 0;
-      const step1 = Math.abs(numericValue - median7) * 0.3;
-      const step2 = Math.abs(numericValue) * 0.2;
-      const step3 = Math.abs(numericValue - target) * 0.5;
+      const step1 = Math.abs(numericValue - median7) * STEP_MEDIAN_RATIO;
+      const step2 = Math.abs(numericValue) * STEP_CURRENT_RATIO;
+      const step3 = Math.abs(numericValue - target) * STEP_TARGET_RATIO;
       let step = Math.min(step1, step2, step3);
 
-      if (step < 0.5) step = 0.5;
-      const cap = Math.max(Math.abs(numericValue) * 0.2, 0.5);
+      if (step < STEP_MIN) step = STEP_MIN;
+      const cap = Math.max(Math.abs(numericValue) * STEP_CAP_RATIO, STEP_MIN);
       if (step > cap) step = cap;
 
       if (hasInterference) {
-        step = Math.max(step * 0.5, 0.5);
+        step = Math.max(step * 0.5, STEP_MIN);
       }
 
       const newValue =
@@ -175,7 +172,7 @@ export function generateSuggestion(config, records) {
   };
 }
 
-export function generateReviewConclusion(config, cleanedRecords, rangeDays = 7) {
+export function generateReviewConclusion(config, cleanedRecords) {
   const scores = computeDailyScores(config, cleanedRecords);
   const sampleNote = cleanedRecords.length < 3 ? '样本较少，结论仅供参考' : '';
 
@@ -208,14 +205,14 @@ export function generateReviewConclusion(config, cleanedRecords, rangeDays = 7) 
 
   if (lossFirst !== null && lossSecond !== null) {
     const diff = lossSecond - lossFirst;
-    if (diff > 0.05) lossTrend = '恶化';
-    else if (diff < -0.05) lossTrend = '收敛';
+    if (diff > TREND_THRESHOLD) lossTrend = '恶化';
+    else if (diff < -TREND_THRESHOLD) lossTrend = '收敛';
   }
 
   if (gainFirst !== null && gainSecond !== null) {
     const diff = gainSecond - gainFirst;
-    if (diff > 0.05) gainTrend = '收敛';
-    else if (diff < -0.05) gainTrend = '恶化';
+    if (diff > TREND_THRESHOLD) gainTrend = '收敛';
+    else if (diff < -TREND_THRESHOLD) gainTrend = '恶化';
   }
 
   const trend = `本周损失趋势呈${lossTrend}，增益趋势呈${gainTrend}。`;
@@ -224,16 +221,13 @@ export function generateReviewConclusion(config, cleanedRecords, rangeDays = 7) 
   let issue = '';
 
   if (latest) {
-    const allIndicators = [
-      ...(config.lossIndicators || []).map((ind) => ({ ...ind, type: 'loss' })),
-      ...(config.gainIndicators || []).map((ind) => ({ ...ind, type: 'gain' }))
-    ];
+    const allIndicators = allIndicatorsOf(config);
 
     let worst = null;
     let worstRate = -Infinity;
 
     allIndicators.forEach((ind) => {
-      const value = latest.values?.[ind.name];
+      const value = latest.values?.[ind.id];
       if (value === undefined || value === null || Number.isNaN(Number(value))) return;
       const rate = indicatorDeviationRate(ind, value);
       if (rate > worstRate) {
@@ -270,8 +264,7 @@ export function getRestReminders(config, records) {
   if (sorted.length < 3) return reminders;
 
   const recent3 = sorted.slice(-3);
-  const tags3 = recent3.flatMap((r) => r.tags || []);
-  const hasInterference = tags3.includes('生病') || tags3.includes('突发事件');
+  const hasInterference = recent3.some(hasInterferenceTag);
 
   if (hasInterference) {
     const scores = computeDailyScores(config, recent3);
@@ -279,7 +272,7 @@ export function getRestReminders(config, records) {
       scores.length === 3 &&
       scores[0].lossScore !== null &&
       scores[2].lossScore !== null &&
-      scores[2].lossScore > scores[0].lossScore + 0.05
+      scores[2].lossScore > scores[0].lossScore + TREND_THRESHOLD
     ) {
       reminders.push('近期存在生病/突发事件标签，且损失趋势上升，建议优先安排休息恢复。');
     }
@@ -287,9 +280,7 @@ export function getRestReminders(config, records) {
 
   const recent7 = sorted.slice(-7);
   if (recent7.length >= 7) {
-    const hasRestMarker = recent7.some(
-      (r) => (r.tags || []).includes('生病') || (r.tags || []).includes('突发事件')
-    );
+    const hasRestMarker = recent7.some(hasInterferenceTag);
 
     if (!hasRestMarker) {
       reminders.push('连续 7 天未出现休息标记，建议安排放松时间。');

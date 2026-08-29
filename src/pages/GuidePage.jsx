@@ -1,8 +1,8 @@
 export default function GuidePage() {
   return (
-    <div className="space-y-6">
-      <section className="bg-white rounded-lg border border-gray-200 p-4">
-        <h2 className="font-medium">项目介绍</h2>
+    <div className="space-y-4 page-fade">
+      <section className="card p-4">
+        <h2 className="section-title">项目介绍</h2>
         <p className="mt-2 text-sm leading-6 text-gray-700">
           SelfTrainer 是一款将「机器学习模型训练范式」迁移到个人行为优化的本地优先工具。
           你将行为目标拆解为损失指标与增益指标，每天用数字记录行为，系统根据目标偏差率
@@ -14,8 +14,8 @@ export default function GuidePage() {
         </p>
       </section>
 
-      <section className="bg-white rounded-lg border border-gray-200 p-4">
-        <h2 className="font-medium">DeepSeek API Key 获取步骤</h2>
+      <section className="card p-4">
+        <h2 className="section-title">DeepSeek API Key 获取步骤</h2>
         <ol className="mt-2 list-decimal list-inside text-sm leading-7 text-gray-700">
           <li>打开 DeepSeek 开放平台官网：platform.deepseek.com</li>
           <li>注册并登录账号</li>
@@ -29,8 +29,8 @@ export default function GuidePage() {
         </p>
       </section>
 
-      <section className="bg-white rounded-lg border border-gray-200 p-4">
-        <h2 className="font-medium">AI 生成指标操作流程</h2>
+      <section className="card p-4">
+        <h2 className="section-title">AI 生成指标操作流程</h2>
         <ol className="mt-2 list-decimal list-inside text-sm leading-7 text-gray-700">
           <li>在「配置」页确认已填入有效 DeepSeek API Key</li>
           <li>在「AI 辅助生成指标」区域，用一句大白话描述目标</li>
@@ -40,8 +40,8 @@ export default function GuidePage() {
         </ol>
       </section>
 
-      <section className="bg-white rounded-lg border border-gray-200 p-4">
-        <h2 className="font-medium">指标规则讲解</h2>
+      <section className="card p-4">
+        <h2 className="section-title">指标规则讲解</h2>
         <ul className="mt-2 list-disc list-inside text-sm leading-7 text-gray-700">
           <li><strong>损失指标：</strong>越小越好，如屏幕使用时长、未完成任务数</li>
           <li><strong>增益指标：</strong>越大越好，如运动时长、专注时长</li>
@@ -51,8 +51,8 @@ export default function GuidePage() {
         </ul>
       </section>
 
-      <section className="bg-white rounded-lg border border-gray-200 p-4">
-        <h2 className="font-medium">完整使用流程</h2>
+      <section className="card p-4">
+        <h2 className="section-title">完整使用流程</h2>
         <ol className="mt-2 list-decimal list-inside text-sm leading-7 text-gray-700">
           <li>在「配置」页导入内置模板，或使用 AI 辅助生成指标</li>
           <li>在「今日训练」页录入当天每个指标的实际数值</li>

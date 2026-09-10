@@ -1,7 +1,8 @@
 import { loadApiConfig } from './storage';
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
-const DEEPSEEK_MODEL = 'deepseek-v4-flash';
+// 官方当前模型名；旧名 deepseek-v4-flash 仅为兼容别名，随时可能下线
+const DEEPSEEK_MODEL = 'deepseek-flash';
 
 /**
  * 固定 System Prompt：AI 生成指标专用
@@ -106,7 +107,19 @@ export async function chatCompletion(
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        // 透出服务端错误详情（模型不存在/余额不足/鉴权失败等），便于用户定位
+        let detail = '';
+        try {
+          const errBody = await response.json();
+          detail = errBody?.error?.message || '';
+        } catch (e) {
+          // ignore
+        }
+        const err = new Error(
+          detail ? `HTTP ${response.status}：${detail}` : `HTTP ${response.status}`
+        );
+        err.status = response.status;
+        throw err;
       }
 
       const data = await response.json();
@@ -118,8 +131,25 @@ export async function chatCompletion(
 
       return content;
     } catch (error) {
-      lastError = error;
-      if (signal?.aborted) break;
+      if (signal?.aborted) {
+        lastError = new Error('请求已取消');
+        break;
+      }
+      // 内部超时触发的 AbortError 转译为可读提示
+      lastError =
+        error?.name === 'AbortError'
+          ? new Error(`请求超时（${Math.round(timeoutMs / 1000)} 秒），请检查网络后重试`)
+          : error;
+      // 4xx 客户端错误（模型名错误/鉴权失败/参数非法等）重试无意义，直接退出
+      if (
+        error?.status &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 408 &&
+        error.status !== 429
+      ) {
+        break;
+      }
     } finally {
       clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', forwardAbort);

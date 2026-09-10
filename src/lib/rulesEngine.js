@@ -215,7 +215,7 @@ export function generateReviewConclusion(config, cleanedRecords) {
     else if (diff < -TREND_THRESHOLD) gainTrend = '恶化';
   }
 
-  const trend = `本周损失趋势呈${lossTrend}，增益趋势呈${gainTrend}。`;
+  const trend = `统计区间内损失趋势呈${lossTrend}，增益趋势呈${gainTrend}。`;
 
   const latest = cleanedRecords[cleanedRecords.length - 1];
   let issue = '';

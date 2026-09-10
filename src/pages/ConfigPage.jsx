@@ -238,10 +238,10 @@ export default function ConfigPage() {
     setError('');
   };
 
-  const editIndicator = (indicator) => {
+  const editIndicator = (indicator, type) => {
     setEditId(indicator.id);
     setForm({
-      type: indicator.type,
+      type,
       name: indicator.name,
       unit: indicator.unit || '',
       target: indicator.target,
@@ -501,7 +501,7 @@ export default function ConfigPage() {
                       )}
                     </div>
                     <div className="flex gap-1.5 shrink-0">
-                      <button type="button" onClick={() => editIndicator(ind)} className="btn-secondary">
+                      <button type="button" onClick={() => editIndicator(ind, group.key)} className="btn-secondary">
                         编辑
                       </button>
                       <button

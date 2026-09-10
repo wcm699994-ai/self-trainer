@@ -342,8 +342,8 @@ export default function ConfigPage() {
     if (!aiResult) return;
     if (!window.confirm('确认用 AI 生成的指标方案替换当前配置？')) return;
 
-    const loss = aiResult.loss.map((ind) => buildIndicator(ind));
-    const gain = aiResult.gain.map((ind) => buildIndicator(ind));
+    const loss = aiResult.lossIndicators.map((ind) => buildIndicator(ind));
+    const gain = aiResult.gainIndicators.map((ind) => buildIndicator(ind));
 
     setConfig({ lossIndicators: loss, gainIndicators: gain });
 
@@ -679,7 +679,7 @@ export default function ConfigPage() {
                 <div className="mt-2 grid gap-2">
                   <div>
                     <p className="text-sm font-medium">损失指标</p>
-                    {aiResult.loss.map((ind, index) => (
+                    {aiResult.lossIndicators.map((ind, index) => (
                       <div key={index} className="text-sm mt-1">
                         {ind.name} · 目标 {ind.target}
                         {ind.unit || ''} · 权重 {ind.weight}
@@ -688,7 +688,7 @@ export default function ConfigPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">增益指标</p>
-                    {aiResult.gain.map((ind, index) => (
+                    {aiResult.gainIndicators.map((ind, index) => (
                       <div key={index} className="text-sm mt-1">
                         {ind.name} · 目标 {ind.target}
                         {ind.unit || ''} · 权重 {ind.weight}

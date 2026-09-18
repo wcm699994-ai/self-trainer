@@ -22,34 +22,6 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
-function getTrendColor(scores, key, betterWhenLower) {
-  if (scores.length < 3) return '#6b7280';
-
-  const half = Math.ceil(scores.length / 2);
-  const first = scores.slice(0, half);
-  const second = scores.slice(half);
-
-  const avg = (arr) => {
-    const valid = arr.filter((item) => item[key] !== null && item[key] !== undefined);
-    if (valid.length === 0) return null;
-    return valid.reduce((sum, item) => sum + Number(item[key]), 0) / valid.length;
-  };
-
-  const firstAvg = avg(first);
-  const secondAvg = avg(second);
-
-  if (firstAvg === null || secondAvg === null) return '#6b7280';
-
-  const diff = secondAvg - firstAvg;
-  if (Math.abs(diff) < 0.05) return '#6b7280';
-
-  if (betterWhenLower) {
-    return diff > 0 ? '#f97316' : '#0891b2';
-  }
-
-  return diff > 0 ? '#0891b2' : '#f97316';
-}
-
 export default function ReviewPage() {
   const config = useStore((s) => s.config);
   const records = useStore((s) => s.records);
@@ -86,13 +58,15 @@ export default function ReviewPage() {
     [config, cleanedFiltered]
   );
 
-  const lossColor = getTrendColor(scores, 'lossScore', true);
-  const gainColor = getTrendColor(scores, 'gainScore', false);
+  // 固定配色：损失趋势橙、增益趋势青，保证两条线始终可区分
+  const lossColor = '#f97316';
+  const gainColor = '#0891b2';
 
   // 单指标走势
   const indOptions = useMemo(() => allIndicatorsOf(config), [config]);
   const [selectedIndId, setSelectedIndId] = useState('');
   const selectedInd = indOptions.find((ind) => ind.id === selectedIndId) || indOptions[0];
+  const indLineColor = selectedInd?.type === 'loss' ? '#f97316' : '#0891b2';
 
   const indData = useMemo(() => {
     if (!selectedInd) return [];
@@ -266,7 +240,7 @@ export default function ReviewPage() {
                     type="monotone"
                     dataKey="value"
                     name={selectedInd.name}
-                    stroke="#0891b2"
+                    stroke={indLineColor}
                     strokeWidth={2}
                     dot={false}
                     connectNulls

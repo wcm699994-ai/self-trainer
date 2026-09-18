@@ -97,6 +97,34 @@ describe('generateSuggestion', () => {
     const s = generateSuggestion(config, records);
     expect(s.text).toContain('步长已减半');
   });
+
+  it('计数类指标建议保持整数步长', () => {
+    const countConfig = {
+      lossIndicators: [{ id: 'c1', name: '放纵次数', unit: '次', target: 1, weight: 1 }],
+      gainIndicators: []
+    };
+    const records = [
+      { date: '2026-08-25', values: { c1: 3 }, tags: [] },
+      { date: '2026-08-26', values: { c1: 3 }, tags: [] },
+      { date: '2026-08-27', values: { c1: 3 }, tags: [] },
+      { date: '2026-08-28', values: { c1: 2 }, tags: [] }
+    ];
+    const s = generateSuggestion(countConfig, records);
+    expect(s.text).toContain('放纵次数');
+    expect(s.text).not.toMatch(/0\.\d+次/);
+    expect(s.text).toMatch(/→ \d+次/);
+    expect(s.text).toContain('梯度步长');
+  });
+
+  it('全部达标时不生成调整建议', () => {
+    const records = [
+      rec('2026-08-25', 2, 30),
+      rec('2026-08-26', 2, 30),
+      rec('2026-08-27', 2, 30)
+    ];
+    const s = generateSuggestion(config, records);
+    expect(s.text).toContain('目标范围内');
+  });
 });
 
 describe('generateReviewConclusion', () => {

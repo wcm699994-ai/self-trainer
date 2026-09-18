@@ -94,13 +94,6 @@ export default function HomePage() {
     setValues((prev) => ({ ...prev, [id]: value }));
   };
 
-  const adjustValue = (id, delta) => {
-    setValues((prev) => {
-      const current = Number(prev[id]) || 0;
-      return { ...prev, [id]: Math.max(current + delta, 0) };
-    });
-  };
-
   const toggleTag = (tag) => {
     setTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
@@ -262,42 +255,14 @@ export default function HomePage() {
                       </span>
                     )}
                   </div>
-                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => adjustValue(ind.id, -10)}
-                      className="btn-secondary !px-2 !py-1 text-xs"
-                    >
-                      -10
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adjustValue(ind.id, -5)}
-                      className="btn-secondary !px-2 !py-1 text-xs"
-                    >
-                      -5
-                    </button>
+                  <div className="mt-2">
                     <input
                       type="number"
                       step="any"
                       value={values[ind.id] ?? ''}
                       onChange={(e) => updateValue(ind.id, e.target.value)}
-                      className="input w-24 text-center"
+                      className="input w-32 text-center"
                     />
-                    <button
-                      type="button"
-                      onClick={() => adjustValue(ind.id, 5)}
-                      className="btn-secondary !px-2 !py-1 text-xs"
-                    >
-                      +5
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => adjustValue(ind.id, 10)}
-                      className="btn-secondary !px-2 !py-1 text-xs"
-                    >
-                      +10
-                    </button>
                   </div>
                 </div>
               );

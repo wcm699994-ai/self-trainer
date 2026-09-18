@@ -17,6 +17,20 @@ const TARGET_ZERO_DENOMINATOR = 3;  // 目标为 0 时偏差率分母
 const MIN_SERIES_FOR_MEDIAN = 3;    // 参与中位数计算的最少样本数
 const INTERFERENCE_TAGS = ['生病', '突发事件'];
 
+// 计数类单位：按整数步进（次/个/篇等），时长/距离类保持小数步进
+const COUNT_UNITS = ['次', '个', '篇', '件', '项', '回', '顿', '杯', '页', '章', '天', '种', '本', '门'];
+
+function isCountUnit(indicator) {
+  const unit = String(indicator.unit || '').trim();
+  if (!unit) return false;
+  return COUNT_UNITS.some((u) => unit.includes(u));
+}
+
+// 数值展示：整数不补小数位
+function fmtValue(n) {
+  return Number.isInteger(n) ? String(n) : Number(n).toFixed(1);
+}
+
 function hasInterferenceTag(record) {
   return (record.tags || []).some((tag) => INTERFERENCE_TAGS.includes(tag));
 }
@@ -102,6 +116,9 @@ export function generateSuggestion(config, records) {
 
   const allIndicators = allIndicatorsOf(config);
 
+  let hasDeviation = false;
+  let hasInsufficientSamples = false;
+
   const candidates = allIndicators
     .map((ind) => {
       const value = latest.values?.[ind.id];
@@ -111,6 +128,7 @@ export function generateSuggestion(config, records) {
       const deviationRate = indicatorDeviationRate(ind, numericValue);
 
       if (deviationRate <= DEVIATION_THRESHOLD) return null;
+      hasDeviation = true;
 
       const cleanedSeries = recent
         .filter((r) => !hasInterferenceTag(r))
@@ -118,7 +136,10 @@ export function generateSuggestion(config, records) {
         .filter((v) => v !== undefined && v !== null && !Number.isNaN(Number(v)))
         .map(Number);
 
-      if (cleanedSeries.length < MIN_SERIES_FOR_MEDIAN) return null;
+      if (cleanedSeries.length < MIN_SERIES_FOR_MEDIAN) {
+        hasInsufficientSamples = true;
+        return null;
+      }
 
       const median7 = median(cleanedSeries);
       if (median7 === null) return null;
@@ -137,10 +158,20 @@ export function generateSuggestion(config, records) {
         step = Math.max(step * 0.5, STEP_MIN);
       }
 
-      const newValue =
-        ind.type === 'loss'
-          ? Math.max(numericValue - step, 0)
-          : numericValue + step;
+      let newValue;
+      if (isCountUnit(ind)) {
+        // 计数类指标（次/个/篇…）：步长取整且最小为 1，建议值保持整数
+        step = Math.max(Math.round(step), 1);
+        newValue =
+          ind.type === 'loss'
+            ? Math.max(Math.round(numericValue) - step, 0)
+            : Math.round(numericValue) + step;
+      } else {
+        newValue =
+          ind.type === 'loss'
+            ? Math.max(numericValue - step, 0)
+            : numericValue + step;
+      }
 
       return {
         ...ind,
@@ -155,7 +186,10 @@ export function generateSuggestion(config, records) {
     .sort((a, b) => b.priority - a.priority);
 
   if (candidates.length === 0) {
-    return { text: '当前各项指标均在目标范围内，或样本不足，暂不生成调整建议。' };
+    if (hasDeviation && hasInsufficientSamples) {
+      return { text: '检测到指标偏离目标，但近 7 天有效样本不足，继续记录几天后即可生成调参建议。' };
+    }
+    return { text: '当前各项指标均在目标范围内，继续保持。' };
   }
 
   const best = candidates[0];
@@ -163,12 +197,12 @@ export function generateSuggestion(config, records) {
 
   if (hasInterference) {
     return {
-      text: `近期存在生病/突发事件干扰，建议优先休息恢复。可小幅${direction}「${best.name}」：${best.value}${best.unit || ''} → ${best.newValue.toFixed(1)}${best.unit || ''}（步长已减半）。`
+      text: `近期存在生病/突发事件干扰，建议优先休息恢复。可小幅${direction}「${best.name}」：${fmtValue(best.value)}${best.unit || ''} → ${fmtValue(best.newValue)}${best.unit || ''}（步长已减半）。`
     };
   }
 
   return {
-    text: `建议${direction}「${best.name}」：${best.value}${best.unit || ''} → ${best.newValue.toFixed(1)}${best.unit || ''}（目标 ${best.target}${best.unit || ''}，单次步长 ${best.step.toFixed(1)}${best.unit || ''}）。`
+    text: `建议${direction}「${best.name}」：${fmtValue(best.value)}${best.unit || ''} → ${fmtValue(best.newValue)}${best.unit || ''}（目标 ${fmtValue(best.target)}${best.unit || ''}，梯度步长 ${fmtValue(best.step)}${best.unit || ''}）。`
   };
 }
 

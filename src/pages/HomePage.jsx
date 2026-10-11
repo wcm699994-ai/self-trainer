@@ -183,7 +183,7 @@ export default function HomePage() {
       <section className="card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="section-title">每日数据采集</h2>
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
             <button
               type="button"
               onClick={() => setSelectedDate(today)}

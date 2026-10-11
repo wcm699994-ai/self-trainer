@@ -154,7 +154,7 @@ export default function ReviewPage() {
               : '暂无数据，请先录入训练样本。'}
           </p>
         ) : (
-          <div className="mt-4 h-72">
+          <div className="mt-4 h-56 sm:h-72">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={ma} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -213,7 +213,7 @@ export default function ReviewPage() {
           {indData.length === 0 ? (
             <p className="mt-4 muted">所选指标在当前范围内暂无数据。</p>
           ) : (
-            <div className="mt-4 h-64">
+            <div className="mt-4 h-52 sm:h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={indData} margin={{ top: 5, right: 30, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -231,7 +231,7 @@ export default function ReviewPage() {
                     strokeDasharray="4 4"
                     label={{
                       value: `目标 ${selectedInd.target}`,
-                      position: 'right',
+                      position: 'insideTopRight',
                       fontSize: 11,
                       fill: '#6b7280'
                     }}

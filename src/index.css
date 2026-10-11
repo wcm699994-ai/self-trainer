@@ -6,6 +6,11 @@
   html {
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button {
+    touch-action: manipulation;
   }
 
   body {
@@ -35,7 +40,8 @@
   }
 
   .input {
-    @apply border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm bg-white transition placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400;
+    /* 移动端 16px 起，避免 iOS Safari 聚焦时自动放大页面 */
+    @apply border border-gray-200 rounded-lg px-2.5 py-1.5 text-base sm:text-sm bg-white transition placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-400;
   }
 
   .label {
